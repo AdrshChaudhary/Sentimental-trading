@@ -1,0 +1,12 @@
+pandas
+numpy
+scikit-learn
+tweepy
+praw
+telethon
+nltk
+transformers
+matplotlib
+seaborn
+tensorflow
+python-dotenv

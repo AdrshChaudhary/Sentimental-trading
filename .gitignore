@@ -1,0 +1,5 @@
+/.env
+/anon.session
+/data
+/notebooks
+/__pycache__
