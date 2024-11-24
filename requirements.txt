@@ -7,9 +7,7 @@ asyncio
 ta
 yfinance
 wordcloud
-matplotlib
-os
-logging
+matplotlib==3.9.2
 praw
 telethon
 python-dotenv
