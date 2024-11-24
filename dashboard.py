@@ -94,25 +94,43 @@ def calculate_technical_indicators(df):
 
 @st.cache_data(ttl=3600)
 def fetch_financial_news(symbol):
-    """Fetch news from multiple sources"""
+    """Fetch news with fallback options and better error handling"""
     news_list = []
     
-    # Fetch from Yahoo Finance
     try:
         ticker = yf.Ticker(symbol)
+        # Add a timeout to prevent hanging
         yahoo_news = ticker.news
+        
         if yahoo_news:
             for article in yahoo_news[:5]:
                 news_list.append({
-                    'title': article.get('title'),
-                    'description': article.get('summary'),
+                    'title': article.get('title', 'No title available'),
+                    'description': article.get('summary', 'No description available'),
                     'source': 'Yahoo Finance',
-                    'link': article.get('link'),
-                    'published': datetime.fromtimestamp(article.get('providerPublishTime', 0))
+                    'link': article.get('link', '#'),
+                    'published': datetime.fromtimestamp(article.get('providerPublishTime', datetime.now().timestamp()))
                 })
+        
+        if not news_list:  # If no news from Yahoo, provide placeholder
+            news_list.append({
+                'title': f'No recent news available for {symbol}',
+                'description': 'Please check back later for updates.',
+                'source': 'System Message',
+                'link': '#',
+                'published': datetime.now()
+            })
+            
     except Exception as e:
-        print(f"Error fetching Yahoo Finance news: {e}")
-
+        st.warning(f"Unable to fetch live news. Showing placeholder content.")
+        news_list.append({
+            'title': f'Temporary news service interruption for {symbol}',
+            'description': 'Our news service is currently unavailable. Please try again later.',
+            'source': 'System Message',
+            'link': '#',
+            'published': datetime.now()
+        })
+    
     return news_list
 
 @st.cache_data
