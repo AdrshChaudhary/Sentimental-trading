@@ -5,19 +5,14 @@ import plotly.express as px
 import plotly.graph_objs as go
 from datetime import datetime
 import asyncio
-import nest_asyncio
 from src.scraper import scrape_reddit, scrape_telegram
 from src.preprocess import preprocess_data
-from src.visualizer import visualize_performance
 from src.model import train_model
 from src.sentiment import analyze_sentiment
 import ta
 import yfinance as yf
-import requests
-from bs4 import BeautifulSoup
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
-import io
 
 # Set page config at the very beginning
 st.set_page_config(
