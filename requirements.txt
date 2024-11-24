@@ -5,9 +5,11 @@ plotly
 datetime
 asyncio
 ta
+torch
+textblob
 yfinance
 wordcloud
-matplotlib==3.9.2
+matplotlib
 praw
 telethon
 python-dotenv

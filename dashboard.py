@@ -28,10 +28,37 @@ def fetch_data(symbol, period='1y', is_crypto=False):
     try:
         if is_crypto:
             symbol = f"{symbol}-USD"
-        data = yf.download(symbol, period=period)
-        if data.empty:
+        
+        # Add error handling for invalid symbols
+        if not symbol or len(symbol.strip()) == 0:
+            st.error("Please enter a valid symbol")
             return None
+            
+        data = yf.download(symbol, period=period)
+        
+        if data.empty:
+            st.error(f"No data found for symbol: {symbol}")
+            return None
+            
+        # Convert multi-level columns to single level if necessary
+        if isinstance(data.columns, pd.MultiIndex):
+            # Flatten column names using the first level
+            data.columns = [col[0] for col in data.columns]
+            
+        # Validate that we have the required columns
+        required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        
+        if missing_columns:
+            st.error(f"Missing required data columns: {', '.join(missing_columns)}")
+            return None
+            
         return data
+        
+    except Exception as e:
+        st.error(f"Error fetching data: {str(e)}")
+        return None
+        
     except Exception as e:
         st.error(f"Error fetching data: {str(e)}")
         return None
@@ -41,16 +68,24 @@ def fetch_data(symbol, period='1y', is_crypto=False):
 def calculate_technical_indicators(df):
     """Calculate technical indicators"""
     if len(df) > 0:
+
+        if isinstance(df['Close'], pd.DataFrame):  # If it's a DataFrame, flatten it
+            close_prices = df['Close'].iloc[:, 0]  # Use the first column
+        else:
+            close_prices = df['Close']
+
+        # Convert to 1D Series if it's still not 1D
+        close_prices = pd.Series(close_prices.values.flatten(), index=df.index, name='Close')
         # Moving averages
-        df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
-        df['SMA_50'] = ta.trend.sma_indicator(df['Close'], window=50)
-        df['EMA_20'] = ta.trend.ema_indicator(df['Close'], window=20)
-        
+        df['SMA_20'] = ta.trend.sma_indicator(close=close_prices, window=20)
+        df['SMA_50'] = ta.trend.sma_indicator(close=close_prices, window=50)
+        df['EMA_20'] = ta.trend.ema_indicator(close=close_prices, window=20)
+
         # RSI
-        df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
-                
+        df['RSI'] = ta.momentum.rsi(close=close_prices, window=14)
+
         # Bollinger Bands
-        bollinger = ta.volatility.BollingerBands(df['Close'])
+        bollinger = ta.volatility.BollingerBands(close=close_prices)
         df['BB_High'] = bollinger.bollinger_hband()
         df['BB_Low'] = bollinger.bollinger_lband()
         df['BB_Mid'] = bollinger.bollinger_mavg()
@@ -146,60 +181,121 @@ def get_processed_data():
         return None, None, None, None
 
 def create_price_chart(df, symbol):
-    """Create candlestick chart"""
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df['Open'],
-        high=df['High'],
-        low=df['Low'],
-        close=df['Close'],
-        name='OHLC'
-    ))
-    
-    # Add Bollinger Bands
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], 
-                            line=dict(color='gray', dash='dash'), name='BB Upper'))
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Low'], 
-                            line=dict(color='gray', dash='dash'), name='BB Lower'))
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Mid'], 
-                            line=dict(color='blue', dash='dash'), name='BB Middle'))
-    
-    fig.update_layout(
-        title=f'{symbol} Price',
-        yaxis_title='Price',
-        xaxis_title='Date',
-        template='plotly_white',
-        height=600
-    )
-    return fig
+    """Create candlestick chart with Bollinger Bands."""
+    try:
+        # Define required columns
+        required_columns = ['Open', 'High', 'Low', 'Close']
+        
+        # Check if df is None or empty
+        if df is None or df.empty:
+            st.error("No data available for the selected symbol")
+            return go.Figure()
+        
+        # Convert multi-level columns to single level if necessary
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [col[0] for col in df.columns]
+        
+        # Check if all required columns exist
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            st.error(f"Missing required columns: {', '.join(missing_columns)}")
+            return go.Figure()
+        
+        # Create a copy of the DataFrame to avoid modifying the original
+        chart_df = df.copy()
+        
+        # Handle any NaN values
+        chart_df = chart_df.dropna(subset=required_columns)
+        
+        if len(chart_df) == 0:
+            st.error("No valid data points after removing missing values")
+            return go.Figure()
+        
+        # Convert columns to numeric
+        for col in required_columns:
+            chart_df[col] = pd.to_numeric(chart_df[col], errors='coerce')
+        
+        # Create figure
+        fig = go.Figure()
+        
+        # Add candlestick chart
+        fig.add_trace(go.Candlestick(
+            x=chart_df.index,
+            open=chart_df['Open'],
+            high=chart_df['High'],
+            low=chart_df['Low'],
+            close=chart_df['Close'],
+            name='OHLC',
+            increasing_line_color='#26a69a',
+            decreasing_line_color='#ef5350'
+        ))
+        
+        # Add Bollinger Bands if available
+        bb_columns = ['BB_High', 'BB_Low', 'BB_Mid']
+        if all(col in chart_df.columns for col in bb_columns):
+            for band in ['BB_High', 'BB_Low']:
+                fig.add_trace(go.Scatter(
+                    x=chart_df.index,
+                    y=chart_df[band],
+                    name=f'BB {"Upper" if band == "BB_High" else "Lower"}',
+                    line=dict(color='gray', dash='dash'),
+                    opacity=0.7
+                ))
+            
+            fig.add_trace(go.Scatter(
+                x=chart_df.index,
+                y=chart_df['BB_Mid'],
+                name='BB Middle',
+                line=dict(color='blue', dash='dash'),
+                opacity=0.7
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=f'{symbol} Price Chart',
+            yaxis_title='Price',
+            xaxis_title='Date',
+            template='plotly_white',
+            height=600,
+            showlegend=True,
+            xaxis_rangeslider_visible=False
+        )
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error creating price chart: {str(e)}")
+        return go.Figure()
 
 def create_technical_charts(df):
-    """Create technical analysis charts"""
+    """Create technical analysis charts."""
     # Moving Averages with Volume
     fig_ma = go.Figure()
     fig_ma.add_trace(go.Scatter(x=df.index, y=df['Close'], name='Price'))
-    fig_ma.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], name='SMA 20'))
-    fig_ma.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50'))
+    if 'SMA_20' in df and 'SMA_50' in df:
+        fig_ma.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], name='SMA 20'))
+        fig_ma.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], name='SMA 50'))
     fig_ma.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume', yaxis='y2', opacity=0.3))
     fig_ma.update_layout(
         title='Price, Moving Averages & Volume',
         yaxis2=dict(title='Volume', overlaying='y', side='right'),
         height=400
     )
-    
+
     # RSI
     fig_rsi = go.Figure()
-    fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI'))
-    fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
-    fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
-    fig_rsi.update_layout(
+    if 'RSI' in df:
+        fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI'))
+        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
+        fig_rsi.add_hline(y=30, line_dash="dash", line_color="green")
+        fig_rsi.update_layout(
         title='Relative Strength Index (RSI)',
         yaxis_title='RSI',
         height=400
-    )
-    
+        )
+
     return fig_ma, fig_rsi
+
 
 
 def sentiment_analysis(processed_data, metrics, y_test, predictions):
@@ -275,26 +371,39 @@ def sentiment_analysis(processed_data, metrics, y_test, predictions):
 
 
 def calculate_statistics(df):
-    """Calculate additional market statistics"""
-    returns = df['Close'].pct_change()
+    """Calculate additional market statistics."""
+    # Ensure 'Close' and other columns are 1D
+    high_prices = df['High'].values.flatten() if isinstance(df['High'], pd.DataFrame) else df['High']
+    low_prices = df['Low'].values.flatten() if isinstance(df['Low'], pd.DataFrame) else df['Low']
+    close_prices = df['Close'].values.flatten() if isinstance(df['Close'], pd.DataFrame) else df['Close']
+    volume = df['Volume'].values.flatten() if isinstance(df['Volume'], pd.DataFrame) else df['Volume']
+
+    # Perform calculations
+    all_time_high = max(high_prices)  # Ensure scalar
+    all_time_low = min(low_prices)   # Ensure scalar
+    avg_daily_volume = np.mean(volume)  # Ensure scalar
+
+    # Return statistics
+    returns = pd.Series(close_prices).pct_change()
     volatility = returns.std() * np.sqrt(252)  # Annualized volatility
-    
+
     risk_free_rate = 0.01
-    excess_returns = returns - risk_free_rate/252
+    excess_returns = returns - risk_free_rate / 252
     sharpe_ratio = np.sqrt(252) * excess_returns.mean() / returns.std()
-    
-    rolling_max = df['Close'].cummax()
-    drawdown = (df['Close'] - rolling_max) / rolling_max
+
+    rolling_max = pd.Series(close_prices).cummax()
+    drawdown = (close_prices - rolling_max) / rolling_max
     max_drawdown = drawdown.min()
-    
+
     return {
-        'all_time_high': df['High'].max(),
-        'all_time_low': df['Low'].min(),
-        'avg_daily_volume': df['Volume'].mean(),
+        'all_time_high': all_time_high,
+        'all_time_low': all_time_low,
+        'avg_daily_volume': avg_daily_volume,
         'volatility': volatility,
         'sharpe_ratio': sharpe_ratio,
         'max_drawdown': max_drawdown
     }
+
 
 def main():
     st.cache_resource.clear()
@@ -343,7 +452,10 @@ def main():
         symbol = st.sidebar.text_input(
             "Enter Symbol", 
             "BTC" if is_crypto else "AAPL"
-        )
+        ).strip().upper()
+        if not symbol:
+            st.error("Please enter a valid symbol")
+            return
         
         st.markdown(
             f"<h1 class='main-header'>{'🪙' if is_crypto else '📊'} {analysis_type} Analysis Dashboard</h1>", 
@@ -362,17 +474,17 @@ def main():
                     # Overview metrics
                 col1, col2, col3 = st.columns(3)
                     
-                current_price = info['currentPrice']
+                current_price = info.get('currentPrice', 'N/A')
                 with col1:
                         if current_price != 'N/A':
-                            st.metric("Current Price", f"${current_price:,.2f}")
+                            st.metric("Current Price", f"${float(current_price):,.2f}")
                         else:
                             st.metric("Current Price", "N/A")
                     
                 market_cap = info['marketCap']
                 with col2:
                         if market_cap != 'N/A':
-                            st.metric("Market Cap", f"${market_cap:,.0f}")
+                            st.metric("Market Cap", f"${float(market_cap):,.0f}")
                         else:
                             st.metric("Market Cap", "N/A")
                     
@@ -380,18 +492,20 @@ def main():
                         if is_crypto:
                             volume = info['volume24h']
                             if volume != 'N/A':
-                                st.metric("24h Volume", f"${volume:,.0f}")
+                                st.metric("24h Volume", f"${float(volume):,.0f}")
                             else:
                                 st.metric("24h Volume", "N/A")
                         else:
                             week_change = info['fiftyTwoWeekChange']
                             if week_change != 'N/A':
-                                st.metric("52 Week Change", f"{week_change:.2%}")
+                                st.metric("52 Week Change", f"{float(week_change):.2%}")
                             else:
                                 st.metric("52 Week Change", "N/A")
                     
                     # Price Chart
-                st.plotly_chart(create_price_chart(df, symbol), use_container_width=True)
+                chart = create_price_chart(df, symbol)
+                if chart:
+                    st.plotly_chart(chart, use_container_width=True)
                 
             with tab2:
                     # Technical Analysis
