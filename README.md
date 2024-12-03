@@ -30,7 +30,7 @@ Access the source code and contribute to the project:
 ## Screenshots
 
 ### Dashboard Overview  
-![Dashboard Overview](images/dashboard.PNG)
+![Dashboard Overview](images/overview.PNG)
 
 ### Stock Metrics  
 ![Stock Trends](images/metrics.PNG)
