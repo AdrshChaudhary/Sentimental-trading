@@ -30,10 +30,16 @@ Access the source code and contribute to the project:
 ## Screenshots
 
 ### Dashboard Overview  
-![Dashboard Overview](images/dashboard_overview.png)
+![Dashboard Overview](images/dashboard.png)
 
-### Stock Trends  
-![Stock Trends](images/stock_trends.png)
+### Stock Metrics  
+![Stock Trends](images/metrics.png)
+
+### Best sentiments map
+![Wordcloud](images/wordcloud.png)
+
+### Sample sentiments
+![Sample texts](images/texts.png)
 
 ---
 
