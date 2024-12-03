@@ -326,6 +326,7 @@ def sentiment_analysis(processed_data, metrics, y_test, predictions):
         for line in metrics.split('\n'):
             if 'accuracy' in line:
                 metrics_dict['accuracy'] = float(line.split()[-1])
+                break
             elif 'weighted avg' in line:
                 parts = line.split()
                 metrics_dict['precision'] = float(parts[-3])
